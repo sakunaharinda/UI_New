@@ -20,6 +20,7 @@ from detectors.detector_factory import detector_factory
 from vis import draw_bboxes
 from track import tracking
 from sort import *
+from vis_utils import draw_bboxes_notrack
 
 
 from splash_ui import Ui_splashScreen
@@ -46,6 +47,7 @@ color = [[255,255,255],[237,2,11],
 count = 0
 
 filename = ""
+state = 2
 detector = ""
 err_msg = "Open a video to detect !"
 video_formats = ['avi','mp4']
@@ -60,21 +62,26 @@ class Worker(QObject):
     
     def run(self):
 
-        global filename, objects
+        global filename, objects, state
         mot_tracker = Sort()
         mot_tracker.reset()
         cap = cv2.VideoCapture(filename)
         FPS = cap.get(cv2.CAP_PROP_FPS)
         print(filename,FPS)
+
         while (cap.isOpened()):
             ret, frame = cap.read()
 
             if ret:
                 ret = detector.run(frame)
                 bboxes = ret['results']
-                tracked = tracking(bboxes,mot_tracker)
-               
-                frame, cats  = draw_bboxes(frame, tracked,colors = color)
+                if state==0:
+                    frame, cats = draw_bboxes_notrack(frame,bboxes,colors=color)
+                else:
+                    
+                    tracked = tracking(bboxes,mot_tracker)
+                
+                    frame, cats  = draw_bboxes(frame, tracked,colors = color)
                 self.received.emit(list(cats))
                 rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w, ch = rgbImage.shape
@@ -87,7 +94,7 @@ class Worker(QObject):
 
                 cap.release()
                 self.finished.emit()
-                print('Thread quited sent')
+                
 
 
 
@@ -142,8 +149,13 @@ class mainWindow(QMainWindow):
         self.ui.btn_detect.clicked.connect(self.detect)
         #self.ui.check_track.stateChanged.connect(lambda:self.btnstate(self.ui.check_track))
         self.ui.btn_about.clicked.connect(self.about)
+        self.ui.checkBox.stateChanged.connect(lambda:self.entrack(self.ui.checkBox))
         self.center()
 
+    def entrack(self,b):
+        global state
+        state = b.checkState()
+        
 
     def center(self):
         frameGm = self.frameGeometry()

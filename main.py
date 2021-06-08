@@ -246,7 +246,7 @@ class Ui_mainWindow(object):
 "")
         self.btn_about.setObjectName("btn_about")
         self.checkBox = QtWidgets.QCheckBox(self.frame_main)
-        self.checkBox.setGeometry(QtCore.QRect(20, 480, 130, 20))
+        self.checkBox.setGeometry(QtCore.QRect(20, 480, 121, 17))
         font = QtGui.QFont()
         font.setFamily("Segoe UI")
         font.setPointSize(10)

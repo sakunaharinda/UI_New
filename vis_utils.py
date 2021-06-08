@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-def draw_bboxes(image, bboxes, font_size=0.5, thresh=0.5, colors=None):
+def draw_bboxes_notrack(image, bboxes, font_size=1, thresh=0.5, colors=None):
     """Draws bounding boxes on an image.
 
     Args:
@@ -31,7 +31,7 @@ def draw_bboxes(image, bboxes, font_size=0.5, thresh=0.5, colors=None):
     image = image.copy()
     for cat_name in bboxes:
         keep_inds = bboxes[cat_name][:, -1] > thresh
-        cat_size  = cv2.getTextSize(smd_class_name[cat_name-1], cv2.FONT_HERSHEY_SIMPLEX, font_size, 2)[0]
+        cat_size  = cv2.getTextSize(smd_class_name[cat_name-1], cv2.FONT_HERSHEY_SIMPLEX, font_size, 3)[0]
 
         if colors is None:
             color = np.random.random((3, )) * 0.6 + 0.4
@@ -51,7 +51,7 @@ def draw_bboxes(image, bboxes, font_size=0.5, thresh=0.5, colors=None):
                 categories.append(smd_class_name[cat_name-1])
                 cv2.putText(image, smd_class_name[cat_name-1],
                     (bbox[0], bbox[1] + cat_size[1] + 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_size, (0, 0, 0), thickness=1
+                    cv2.FONT_HERSHEY_SIMPLEX, font_size, (0, 0, 0), thickness=2
                 )
             else:
                 cv2.rectangle(image,
@@ -62,7 +62,7 @@ def draw_bboxes(image, bboxes, font_size=0.5, thresh=0.5, colors=None):
                 categories.append(smd_class_name[cat_name-1])
                 cv2.putText(image, smd_class_name[cat_name-1],
                     (bbox[0], bbox[1] - 2),
-                    cv2.FONT_HERSHEY_SIMPLEX, font_size, (0, 0, 0), thickness=1
+                    cv2.FONT_HERSHEY_SIMPLEX, font_size, (0, 0, 0), thickness=2
                 )
             cv2.rectangle(image,
                 (bbox[0], bbox[1]),
