@@ -1,0 +1,285 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import _init_paths
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+import sys, os
+
+from PyQt5.QtWidgets import  *
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+import cv2
+from time import sleep
+import typing
+
+
+from opts import opts
+from detectors.detector_factory import detector_factory
+from vis import draw_bboxes
+from track import tracking
+from sort import *
+
+
+from splash_ui import Ui_splashScreen
+from main_ui import Ui_mainWindow
+from about_ui import Ui_about
+
+image_ext = ['jpg', 'jpeg', 'png', 'webp']
+video_ext = ['mp4', 'mov', 'avi', 'mkv']
+time_stats = ['tot', 'load', 'pre', 'net', 'dec', 'post', 'merge']
+
+color = [[255,255,255],[237,2,11],
+[244,101,40],
+[255,202,43],
+[64,120,211],
+[238,47,127],
+[127,176,5],
+[255,169,206],
+[204,255,0],
+[173,222,250],
+[189,122,246]]
+
+
+
+count = 0
+
+filename = ""
+detector = ""
+err_msg = "Open a video to detect !"
+video_formats = ['avi','mp4']
+objects = []
+model = 'CenterNet'
+#mot_tracker = Sort()
+
+class Worker(QObject):
+    changePixmap = pyqtSignal(QImage)
+    received = pyqtSignal(list)
+    finished = pyqtSignal()
+    
+    def run(self):
+
+        global filename, objects
+        mot_tracker = Sort()
+        mot_tracker.reset()
+        cap = cv2.VideoCapture(filename)
+        FPS = cap.get(cv2.CAP_PROP_FPS)
+        print(filename,FPS)
+        while (cap.isOpened()):
+            ret, frame = cap.read()
+
+            if ret:
+                ret = detector.run(frame)
+                bboxes = ret['results']
+                tracked = tracking(bboxes,mot_tracker)
+               
+                frame, cats  = draw_bboxes(frame, tracked,colors = color)
+                self.received.emit(list(cats))
+                rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, ch = rgbImage.shape
+                bytesPerLine = ch * w
+                convertToQtFormat = QImage(rgbImage.data, w, h, bytesPerLine, QImage.Format_RGB888)
+                p = convertToQtFormat.scaled(1920, 1080, Qt.KeepAspectRatio)
+                self.changePixmap.emit(p)
+                #sleep(1.0/30)
+            else:
+
+                cap.release()
+                self.finished.emit()
+                print('Thread quited sent')
+
+
+
+
+class aboutWindow(QMainWindow):
+    def __init__(self):
+        QMainWindow.__init__(self)
+        self.ui = Ui_about()
+        self.ui.setupUi(self)
+
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(20)
+
+        self.shadow.setColor(QColor(0,0,0,60))
+        self.ui.frame.setGraphicsEffect(self.shadow)
+
+        self.ui.btn_ok.clicked.connect(self.about_ok)
+
+        self.center()
+
+
+    def center(self):
+        frameGm = self.frameGeometry()
+        screen = QtWidgets.QApplication.desktop().screenNumber(QtWidgets.QApplication.desktop().cursor().pos())
+        centerPoint = QtWidgets.QApplication.desktop().screenGeometry(screen).center()
+        frameGm.moveCenter(centerPoint)
+        self.move(frameGm.topLeft())
+
+    def about_ok(self):
+        self.close()
+
+class mainWindow(QMainWindow):
+    def __init__(self):
+        QMainWindow.__init__(self)
+        self.ui = Ui_mainWindow()
+        self.ui.setupUi(self)
+
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(20)
+
+        self.shadow.setColor(QColor(0,0,0,60))
+        self.ui.frame_main.setGraphicsEffect(self.shadow)
+
+        self.ui.btn_quit.clicked.connect(self.quit)
+        self.ui.btn_open_vid.clicked.connect(self.open)
+        self.ui.btn_detect.clicked.connect(self.detect)
+        #self.ui.check_track.stateChanged.connect(lambda:self.btnstate(self.ui.check_track))
+        self.ui.btn_about.clicked.connect(self.about)
+        self.center()
+
+
+    def center(self):
+        frameGm = self.frameGeometry()
+        screen = QtWidgets.QApplication.desktop().screenNumber(QtWidgets.QApplication.desktop().cursor().pos())
+        centerPoint = QtWidgets.QApplication.desktop().screenGeometry(screen).center()
+        frameGm.moveCenter(centerPoint)
+        self.move(frameGm.topLeft())
+
+
+    def quit(self):
+        sys.exit()
+
+    @pyqtSlot(QImage)
+    def setImage(self, image):
+        self.ui.screen.setPixmap(QPixmap.fromImage(image))
+
+    @pyqtSlot(list)
+    def getCats(self,l):
+        global objects
+        for obj in l:
+            if obj not in objects:
+                objects.append(obj)
+                self.ui.text_obj.append(obj)
+
+    def open(self):
+        global filename
+        filename,_ = QFileDialog.getOpenFileName(self, 'Open Video to Detect')
+        cap = cv2.VideoCapture(filename)
+        mot_tracker = Sort()
+        _,frame = cap.read()
+        rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgbImage.shape
+        bytesPerLine = ch * w
+        convertToQtFormat = QImage(rgbImage.data, w, h, bytesPerLine, QImage.Format_RGB888)
+        p = convertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
+        self.ui.screen.setPixmap(QPixmap(p))
+        self.ui.text_stat.append("Video Selected : {}".format(filename.split('/')[-1]))
+
+    def detect(self):
+        global filename, err_msg, mot_tracker
+        mot_tracker = Sort()
+        if (filename != "" and filename.split('.')[-1] in video_formats):
+            self.th = QThread()
+            self.worker = Worker()
+            self.worker.moveToThread(self.th)
+            self.th.started.connect(self.worker.run)
+            self.worker.changePixmap.connect(self.setImage)
+
+            self.worker.received.connect(self.getCats)
+            self.worker.finished.connect(self.th.terminate)
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.th.finished.connect(self.th.quit)
+            
+            mot_tracker = Sort()
+
+            self.th.start()
+        else:
+            self.ui.text_stat.append(err_msg)
+
+    def btnstate(self,b):
+        if b.isChecked() == True:
+            print('Checked')
+
+    def about(self):
+        self.ab = aboutWindow()
+        self.ab.show()
+
+
+class splashScreen(QMainWindow):
+    def __init__(self):
+        global detector, model
+        QMainWindow.__init__(self)
+        self.ui = Ui_splashScreen()
+        self.ui.setupUi(self)
+
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.shadow = QGraphicsDropShadowEffect(self)
+        self.shadow.setBlurRadius(20)
+
+        self.shadow.setColor(QColor(0,0,0,60))
+        self.ui.dropShadowFrame.setGraphicsEffect(self.shadow)
+
+        self.center()
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.progress)
+
+        # in ms
+        self.timer.start(35)
+
+        self.ui.label_desc.setText("<strong>WELCOME </strong>TO A SAFER SEA")
+
+        QtCore.QTimer.singleShot(1400, lambda:self.ui.label_desc.setText("<strong>LOADING </strong>MODEL : {}. . .".format(model)))
+        QtCore.QTimer.singleShot(2000, lambda:self.load_model())
+        QtCore.QTimer.singleShot(3000, lambda:self.ui.label_desc.setText("<strong>LOADING </strong>INTERFACE . . ."))
+
+
+        self.show()
+
+    def load_model(self):
+        global detector
+        opt = opts().init()
+        opt.load_model = "../Center_SMD/exp/smd/dla_34/rgb/smd_split1/model_best.pth"
+        os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
+        opt.debug = max(opt.debug, 1)
+        Detector = detector_factory[opt.task]
+        detector = Detector(opt)
+
+
+        self.ui.label_desc.setText("<strong>LOADING </strong>MODEL . . .")
+
+
+    def center(self):
+        frameGm = self.frameGeometry()
+        screen = QtWidgets.QApplication.desktop().screenNumber(QtWidgets.QApplication.desktop().cursor().pos())
+        centerPoint = QtWidgets.QApplication.desktop().screenGeometry(screen).center()
+        frameGm.moveCenter(centerPoint)
+        self.move(frameGm.topLeft())
+
+    def progress(self):
+        global count
+        self.ui.progressBar.setValue(count)
+
+        if (count>100):
+            self.timer.stop()
+            self.main = mainWindow()
+            self.main.show()
+
+            self.close()
+        count+=1
+
+
+
+if __name__ == '__main__':
+    app = QtWidgets.QApplication(sys.argv)
+    window = splashScreen()
+    sys.exit(app.exec_())
